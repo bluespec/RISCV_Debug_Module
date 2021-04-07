@@ -70,6 +70,7 @@ import ISA_Decls    :: *;
 import AXI4_Types   :: *;
 import Fabric_Defs  :: *;
 
+import Debug_Interfaces     :: *;
 import DM_Common            :: *;
 import DM_CPU_Req_Rsp       :: *;
 import DM_Run_Control       :: *;
@@ -95,21 +96,7 @@ interface Debug_Module_IFC;
    // Facing CPU
    // This section replicated for additional harts.
 
-   // Reset and run-control
-   interface Client #(Bool, Bool) hart0_reset_client;
-   interface Client #(Bool, Bool) hart0_client_run_halt;
-   interface Get #(Bit #(4))      hart0_get_other_req;
-
-   // GPR access
-   interface Client #(DM_CPU_Req #(5,  XLEN), DM_CPU_Rsp #(XLEN)) hart0_gpr_mem_client;
-
-   // FPR access
-`ifdef ISA_F
-   interface Client #(DM_CPU_Req #(5,  FLEN), DM_CPU_Rsp #(FLEN)) hart0_fpr_mem_client;
-`endif
-
-   // CSR access
-   interface Client #(DM_CPU_Req #(12, XLEN), DM_CPU_Rsp #(XLEN)) hart0_csr_mem_client;
+   interface DM_CPU_Ifc hart0;
 
    // ----------------
    // Facing Platform
@@ -282,21 +269,23 @@ module mkDebug_Module (Debug_Module_IFC);
    // ----------------
    // Facing CPU/hart0
 
-   // Reset and run-control
-   interface Client hart0_reset_client    = dm_run_control.hart0_reset_client;
-   interface Client hart0_client_run_halt = dm_run_control.hart0_client_run_halt;
-   interface Get    hart0_get_other_req   = dm_run_control.hart0_get_other_req;
+   interface DM_CPU_Ifc hart0;
+      // Reset and run-control
+      interface Client hart_reset_client    = dm_run_control.hart0_reset_client;
+      interface Client hart_client_run_halt = dm_run_control.hart0_client_run_halt;
+      interface Get    hart_get_other_req   = dm_run_control.hart0_get_other_req;
 
-   // GPR access
-   interface Client hart0_gpr_mem_client = dm_abstract_commands.hart0_gpr_mem_client;
+      // GPR access
+      interface Client hart_gpr_mem_client = dm_abstract_commands.hart0_gpr_mem_client;
 
-   // FPR access
+      // FPR access
 `ifdef ISA_F
-   interface Client hart0_fpr_mem_client = dm_abstract_commands.hart0_fpr_mem_client;
+      interface Client hart_fpr_mem_client = dm_abstract_commands.hart0_fpr_mem_client;
 `endif
 
-   // CSR access
-   interface Client hart0_csr_mem_client = dm_abstract_commands.hart0_csr_mem_client;
+      // CSR access
+      interface Client hart_csr_mem_client = dm_abstract_commands.hart0_csr_mem_client;
+   endinterface
 
    // ----------------
    // Facing Platform
