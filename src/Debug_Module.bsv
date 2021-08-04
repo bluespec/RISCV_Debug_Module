@@ -67,7 +67,6 @@ import Cur_Cycle  :: *;
 // Project imports
 
 import ISA_Decls    :: *;
-import AXI4_Types   :: *;
 import Fabric_Defs  :: *;
 
 import Debug_Interfaces     :: *;
@@ -106,7 +105,7 @@ interface Debug_Module_IFC;
    interface Client #(Bool, Bool) ndm_reset_client;
 
    // Read/Write RISC-V memory
-   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) master;
+   interface Client #(SB_Sys_Req, SB_Sys_Rsp) sb_client;
 endinterface
 
 // ================================================================
@@ -294,7 +293,7 @@ module mkDebug_Module (Debug_Module_IFC);
    interface Client ndm_reset_client = dm_run_control.ndm_reset_client;
 
    // Read/Write RISC-V memory
-   interface AXI4_Master_IFC master = dm_system_bus.master;
+   interface Client sb_client = dm_system_bus.master;
 endmodule
 
 // ================================================================

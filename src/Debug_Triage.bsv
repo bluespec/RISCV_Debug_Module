@@ -14,151 +14,95 @@ import GetPut ::*;
 import Semi_FIFOF ::*;
 
 interface Triage_Ifc;
-   interface AXI4_Slave_IFC  #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) server;
-   interface AXI4_Master_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User) client;
+   interface Server #(DM_Sys_Req, DM_Sys_Rsp) server;
 endinterface
 
-module mkDebugTriage #(Server #(Bool, Bool) reset_svr,
-		       Server #(Bool, Bool) runHalt_svr,
-		       Server #(DM_CPU_Req #(5,  XLEN), DM_CPU_Rsp #(XLEN))  gpr,
-		       Server #(DM_CPU_Req #(12,  XLEN), DM_CPU_Rsp #(XLEN)) csr ) (Triage_Ifc);
+module mkDebugTriage #(
+     Server #(Bool, Bool) reset_svr
+   , Server #(Bool, Bool) runHalt_svr,
+   , Server #(DM_CPU_Req #(5,  XLEN), DM_CPU_Rsp #(XLEN))  gpr
+`ifdef ISA_F
+   , Server #(DM_CPU_Req #(5,  FLEN), DM_CPU_Rsp #(XLEN))  fpr
+`endif
+   , Server #(DM_CPU_Req #(12,  XLEN), DM_CPU_Rsp #(XLEN)) csr
+   , Server #(SB_Sys_Req, SB_Sys_Rsp) mem
+   ) (Triage_Ifc);
 
-   AXI4_Slave_Xactor_IFC  #(Wd_Id, Wd_Addr, Wd_Data, Wd_User)  input_Xactor <- mkAXI4_Slave_Xactor;
-   AXI4_Master_Xactor_IFC #(Wd_Id, Wd_Addr, Wd_Data, Wd_User)  sbus_master  <- mkAXI4_Master_Xactor;
 
-   Reg #(Bool) rg_writing <- mkRegU;
+   FIFOF #(DM_Sys_Req) ff_dm_sys_req <- mkFIFOF;
+   FIFOF #(DM_Sys_Rsp) ff_dm_sys_rsp <- mkFIFOF;
 
-   rule read_req_rl;
-      let read_req <- toGet(input_Xactor.o_rd_addr).get();
-      case (read_req.arid)
-	 0: /* to sbus */ sbus_master.i_rd_addr.enq(read_req);
-	 1: /* reset */ begin
-			   Bool running = (read_req.araddr[0] == 1);
-			   reset_svr.request.put (running);
-			end
-	 2: /* run/halt */ begin
-			      Bool running = (read_req.araddr[0] == 1);
-			      runHalt_svr.request.put(running);
-			   end
-	 3: /* gpr read */ gpr.request.put(
-	    DM_CPU_Req {write: False,
-			address: truncate(read_req.araddr),
-			data: (?)});
-	 4: /* csr read */ csr.request.put(
-	    DM_CPU_Req {write: False,
-			address: truncate(read_req.araddr),
-			data: (?)});
-	 default: begin
-		     $display("Invalid debug read request, arid = %0d", read_req.arid);
-		     $finish(0);
-		  end
-      endcase
-      rg_writing <= False;
+   rule rl_rst_req (ff_dm_sys_req.first matches tagged RST .req);
+      reset_svr.request.put (req);
+      ff_dm_sys_req.deq;
    endrule
+
+   rule rl_runhalt_req (ff_dm_sys_req.first matches tagged HLT .req);
+      runHalt_svr.request.put (req);
+      ff_dm_sys_req.deq;
+   endrule
+
+   rule rl_sb_req (ff_dm_sys_req.first matches tagged SB .req);
+      mem.request.put (req);
+      ff_dm_sys_req.deq;
+   endrule
+
+   rule rl_gpr_req (ff_dm_sys_req.first matches tagged GPR .req);
+      gpr.request.put (req);
+      ff_dm_sys_req.deq;
+   endrule
+
+   rule rl_csr_req (ff_dm_sys_req.first matches tagged CSR .req);
+      csr.request.put (req);
+      ff_dm_sys_req.deq;
+   endrule
+
+`ifdef ISA_F
+   rule rl_fpr_req (ff_dm_sys_req.first matches tagged FPR .req);
+      fpr.request.put (req);
+      ff_dm_sys_req.deq;
+   endrule
+`endif
 
    // sbus response
-   rule sbus_rsp_rl;
-      let rsp <- toGet(sbus_master.o_rd_data).get();
-      input_Xactor.i_rd_data.enq(rsp);
+   rule rl_sbus_rsp;
+      let rsp <- mem.response.get ();
+      ff_dm_sys_rsp.enq (tagged SB rsp);
    endrule
 
+   // gpr response
+   rule rl_gpr_rsp;
+      let rsp <- gpr.response.get ();
+      ff_dm_sys_rsp.enq (tagged GPR rsp);
+   endrule
+
+   // csr response
+   rule rl_csr_rsp;
+      let rsp <- csr.response.get ();
+      ff_dm_sys_rsp.enq (tagged CSR rsp);
+   endrule
+
+`ifdef ISA_F
+   // fpr response
+   rule rl_fpr_rsp;
+      let rsp <- fpr.response.get ();
+      ff_dm_sys_rsp.enq (tagged FPR rsp);
+   endrule
+`endif
+
    // reset response:
-   rule reset_rsp_rl;
-      let running <- reset_svr.response.get;
-      input_Xactor.i_rd_data.enq(AXI4_Rd_Data {rid: 1, // for reset traffic
-					       rdata: extend(pack(running)),
-					       rresp: axi4_resp_okay,
-					       rlast: True,
-					       ruser: ?});
+   rule rl_reset_rsp;
+      let rsp <- reset_svr.response.get;
+      ff_dm_sys_rsp.enq (tagged RST rsp);
    endrule
 
    // run/halt response:
-   rule runhalt_rsp_rl;
-      let running <- runHalt_svr.response.get;
-      input_Xactor.i_rd_data.enq(AXI4_Rd_Data {rid: 2, // for run/halt traffic
-					       rdata: extend(pack(running)),
-					       rresp: axi4_resp_okay,
-					       rlast: True,
-					       ruser: ?});
+   rule rl_runhalt_rsp;
+      let rsp <- runHalt_svr.response.get ();
+      ff_dm_sys_rsp.enq (tagged HLT rsp);
    endrule
 
-   // gpr read response:
-   rule gpr_rd_rsp_rl (!rg_writing);
-      let x <- gpr.response.get;
-      input_Xactor.i_rd_data.enq(AXI4_Rd_Data {rid: 3, // for gpr traffic
-					       rdata: x.data,
-					       rresp: axi4_resp_okay,
-					       rlast: True,
-					       ruser: ?});
-   endrule
-
-   // csr read response:
-   rule csr_rd_rsp_rl (!rg_writing);
-      let x <- csr.response.get;
-      input_Xactor.i_rd_data.enq(AXI4_Rd_Data {rid: 4, // for csr traffic
-					       rdata: x.data,
-					       rresp: axi4_resp_okay,
-					       rlast: True,
-					       ruser: ?});
-   endrule
-
-   Reg #(Bool) rg_bursting <- mkReg(False);
-
-   rule burst_tl (rg_bursting);
-      let write_data <- toGet(input_Xactor.o_wr_data).get();
-      sbus_master.i_wr_data.enq(write_data);
-      rg_bursting <= ! write_data.wlast;
-   endrule
-
-   rule write_req_rl (!rg_bursting);
-      let write_req  <- toGet(input_Xactor.o_wr_addr).get();
-      let write_data <- toGet(input_Xactor.o_wr_data).get();
-      case (write_req.awid)
-	 0: /* to sbus */ begin
-			     sbus_master.i_wr_addr.enq(write_req);
-			     sbus_master.i_wr_data.enq(write_data);
-			     rg_bursting <= ! write_data.wlast;
-			  end
-	 3: /* gpr write */ gpr.request.put(
-	    DM_CPU_Req {write: True,
-			address: truncate(write_req.awaddr),
-			data: write_data.wdata});
-	 4: /* csr write */ csr.request.put(
-	    DM_CPU_Req {write: True,
-			address: truncate(write_req.awaddr),
-			data: write_data.wdata});
-	 default: begin
-		     $display("Invalid debug write request, awid = %0d", write_req.awid);
-		     $finish(0);
-		  end
-      endcase
-      rg_writing <= True;
-   endrule
-
-   // sbus response
-   rule sbus_wr_rsp_rl;
-      let rsp <- toGet(sbus_master.o_wr_resp).get();
-      input_Xactor.i_wr_resp.enq(rsp);
-   endrule
-
-   // gpr write response:
-   rule gpr_wr_rsp_rl (rg_writing);
-      let x <- gpr.response.get;
-      input_Xactor.i_wr_resp.enq(AXI4_Wr_Resp {bid: 3, // for gpr traffic
-					       bresp: (x.ok ? axi4_resp_okay: axi4_resp_slverr),
-					       buser: ?});
-   endrule
-
-   // csr write response:
-   rule csr_wr_rsp_rl (rg_writing);
-      let x <- csr.response.get;
-      input_Xactor.i_wr_resp.enq(AXI4_Wr_Resp {bid: 4, // for csr traffic
-					       bresp: (x.ok ? axi4_resp_okay: axi4_resp_slverr),
-					       buser: ?});
-   endrule
-
-   interface server = input_Xactor.axi_side;
-   interface client =  sbus_master.axi_side;
+   interface server = toGPServer (ff_dm_sys_req, ff_dm_sys_rsp);
 endmodule
 
 endpackage

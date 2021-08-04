@@ -508,5 +508,5 @@ DMI dummy_DMI_ifc = interface DMI;
 		    endinterface;
 
 // ================================================================
-
+//
 endpackage
