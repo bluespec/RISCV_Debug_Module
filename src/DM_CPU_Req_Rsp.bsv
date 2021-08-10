@@ -13,7 +13,8 @@ package DM_CPU_Req_Rsp;
 // ================================================================
 // Project imports
 
-// None
+import ISA_Decls     :: *;
+import DM_Common     :: *;
 
 // ================================================================
 // Requests and responses

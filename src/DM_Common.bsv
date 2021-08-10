@@ -381,6 +381,13 @@ typedef enum {DM_SBACCESS_8_BIT,
    } DM_sbaccess
 deriving (Bits, Eq, FShow);
 
+// Helper function to represent DM_sbaccess as Bit #(3) funct3 field.
+// CAUTION: depends on implicit behaviour of pack for DM_sbaccess enum type. If
+// the order of DM_sbaccess enum tags change, this function has to be updated.
+function Bit#(3) fn_sbaccess_to_f3 (DM_sbaccess s);
+   return (pack (s));
+endfunction
+
 function Integer fn_sbaccess_to_addr_incr (DM_sbaccess sbaccess);
    case (sbaccess)
       DM_SBACCESS_8_BIT:   return 1;

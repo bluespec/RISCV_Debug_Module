@@ -375,7 +375,7 @@ module mkDM_System_Bus (DM_System_Bus_IFC);
       if (verbosity != 0) begin
 	 $display ("DM_System_Bus.rule_sb_read_finish: addr 0x%0h,  sbaccess %0d (%0d bytes)",
 		   rg_sbaddress_reading, rg_sbcs_sbaccess, addr_incr);
-	 $display ("    rg_sbdata0 <= 0x%0h", data);
+	 $display ("    rg_sbdata0 <= 0x%0h", rdr.rdata);
 	 $display ("    module state => SB_NOTBUSY");
       end
 

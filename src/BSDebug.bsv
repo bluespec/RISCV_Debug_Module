@@ -14,32 +14,32 @@ package BSDebug;
 // ================================================================
 // BSV library imports
 
-import Vector        :: *;
-import FIFO          :: *;
-import GetPut        :: *;
-import ClientServer  :: *;
-import Connectable   :: *;
-import Bus           :: *;
-import Clocks        :: *;
-import RegUInit      :: *;
+import Vector           :: *;
+import FIFO             :: *;
+import GetPut           :: *;
+import ClientServer     :: *;
+import Connectable      :: *;
+import Bus              :: *;
+import Clocks           :: *;
+import RegUInit         :: *;
 
 // ----------------
 // BSV additional libs
 
-import GetPut_Aux :: *;
-import Semi_FIFOF :: *;
+import GetPut_Aux       :: *;
+import Semi_FIFOF       :: *;
 
 // ================================================================
 // Project imports
 
-import SoC_Map  :: *;
+import SoC_Map          :: *;
 
-import Debug_Module :: *;
+import Debug_Module     :: *;
 import Debug_Interfaces :: *;
-import DM_CPU_Req_Rsp::*;
-import Jtag         :: *;
-import JtagTap      :: *;
-import Giraffe_IFC  :: *;
+import DM_CPU_Req_Rsp   :: *;
+import Jtag             :: *;
+import JtagTap          :: *;
+import Giraffe_IFC      :: *;
 
 // ================================================================
 // Constant: cycles to hold SoC in reset for ndm reset:
@@ -58,8 +58,8 @@ endinterface
 
 // ================================================================
 
-(* synthesize *)
 // reset by power-on reset
+(* synthesize *)
 module mkBSDebug ((*reset="dmi_reset"*)Reset dmi_reset, BSDebug_IFC _ifc);
    let dmi_resetN <- mkResetInverter(dmi_reset); // dmi_reset is active-high
 
@@ -163,8 +163,8 @@ module mkBSDebug ((*reset="dmi_reset"*)Reset dmi_reset, BSDebug_IFC _ifc);
    // ----------------
    // DM Client Channels
    
-   FIFOF #(DM_Sys_Req) ff_dm_sys_req <- mkFIFOF;
-   FIFOF #(DM_Sys_Rsp) ff_dm_sys_rsp <- mkFIFOF;
+   FIFO #(DM_Sys_Req) ff_dm_sys_req <- mkFIFO;
+   FIFO #(DM_Sys_Rsp) ff_dm_sys_rsp <- mkFIFO;
 
    Reg #(Bit #(32))  rg_sb_writes   <- mkReg (0);
    Reg #(Bool)       rg_busy        <- mkReg(False);
@@ -210,7 +210,7 @@ module mkBSDebug ((*reset="dmi_reset"*)Reset dmi_reset, BSDebug_IFC _ifc);
    endrule
 
 `ifdef ISA_F
-   rule rl_fpr_req;
+   rule rl_fpr_req (!rg_busy);
       let req <- debug_module.hart0.hart_fpr_mem_client.request.get();
       ff_dm_sys_req.enq (tagged FPR req);
       rg_busy <= True;
@@ -221,9 +221,13 @@ module mkBSDebug ((*reset="dmi_reset"*)Reset dmi_reset, BSDebug_IFC _ifc);
       debug_module.sb_client.response.put (rsp);
       ff_dm_sys_rsp.deq;
 
-      // Decrement write burst counter
-      if (rsp.read_not_write) rg_busy <= False
+      // For read responses, clear busy flag
+      if (rsp.read_not_write) rg_busy <= False;
+
+      // Write responses
       else begin
+         // Decrement write response counter
+         // If this is thae last write response, clear the busy flag
          rg_sb_writes <= rg_sb_writes - 1;
          if (rg_sb_writes == 1) rg_busy <= False;
       end
@@ -265,23 +269,6 @@ module mkBSDebug ((*reset="dmi_reset"*)Reset dmi_reset, BSDebug_IFC _ifc);
    interface Reset ndm_resetn = ndm_rstn;
    interface JTAG_IFC jtag = jtagtap.jtag;
  endmodule
-
-// ================================================================
-
-(* synthesize *)
-// reset by power-on reset
-module mkDummyBSDebug (BSDebug_IFC);
-   interface toCore = dummy_AXI4_Master_ifc;
-      interface Reset ndm_resetn = noReset;
-      interface JTAG_IFC jtag = interface JTAG_IFC;
-				   method Action tdi(x) = noAction;
-				   method Action tms(x) = noAction;
-				   method Action tclk(x) = noAction;
-				   method tdo = 0;
-				   interface Clock tclk_out = noClock;
-				endinterface ;
-
-endmodule
 
 // ================================================================
 
