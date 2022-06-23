@@ -32,8 +32,6 @@ import Semi_FIFOF       :: *;
 // ================================================================
 // Project imports
 
-import SoC_Map          :: *;
-
 import Debug_Module     :: *;
 import Debug_Interfaces :: *;
 import DM_CPU_Req_Rsp   :: *;
